@@ -1,4 +1,9 @@
 <script setup>
+import {
+  handleAddOrder,
+  handleBotDelete,
+  handleOrderTabMove,
+} from "./orderingUtils";
 import { ref } from "vue";
 
 const pendingOrdersNormal = ref([]);
@@ -14,47 +19,41 @@ const activeBots = ref([]);
 const addBot = () => {
   botCount.value++;
 
-  idleBots.value.push({
+  const botStruct = {
     id: botCount.value,
     timerId: null,
     currentOrder: null,
     processOrder: function (order, type) {
-      if (!order) return;
-
       this.currentOrder = order;
 
-      // Simulate processing time
+      // Simulate processing time of 10 sec
       this.timerId = setTimeout(() => {
         this.currentOrder.status = "completed";
 
-        if (type === "vip") {
-          pendingOrdersVip.value.splice(
-            pendingOrdersVip.value.indexOf(order),
-            1
-          );
-        } else if (type === "normal") {
-          pendingOrdersNormal.value.splice(
-            pendingOrdersNormal.value.indexOf(order),
-            1
-          );
-        }
-
-        processedOrder.value.push(this.currentOrder);
+        // Move tab from pending to processed
+        handleOrderTabMove(
+          order,
+          pendingOrdersVip,
+          pendingOrdersNormal,
+          processedOrder,
+          type
+        );
 
         // Clear when done
         this.timerId = null;
         this.currentOrder = null;
 
-        console.log(this);
-
+        // Move bot from active to idle
         idleBots.value.push(this);
         activeBots.value.splice(activeBots.value.indexOf(this), 1);
 
         // Start processing the next order
         startProcessingOrders();
-      }, 2000);
+      }, 10000);
     },
-  });
+  };
+
+  idleBots.value.push(botStruct);
 
   startProcessingOrders();
 };
@@ -84,36 +83,16 @@ const deleteBot = () => {
   botCount.value--;
 };
 
-const handleBotDelete = (bot) => {
-  if (!bot.timerId || !bot.currentOrder) return;
-
-  clearTimeout(bot.timerId);
-
-  bot.currentOrder.status = "pending";
-};
-
-const addNormalOrder = () => {
+const addOrder = (type) => {
   orderCount.value++;
 
-  pendingOrdersNormal.value.push({
-    id: orderCount.value,
-    name: `${orderCount.value}`,
-    status: "pending",
-    type: "normal",
-  });
+  let order = handleAddOrder(type, orderCount.value);
 
-  startProcessingOrders();
-};
-
-const addVipOrder = () => {
-  orderCount.value++;
-
-  pendingOrdersVip.value.push({
-    id: orderCount.value,
-    name: `${orderCount.value}VIP`,
-    status: "pending",
-    type: "vip",
-  });
+  if (type === "normal") {
+    pendingOrdersNormal.value.push(order);
+  } else if (type === "vip") {
+    pendingOrdersVip.value.push(order);
+  }
 
   startProcessingOrders();
 };
@@ -129,13 +108,13 @@ const startProcessingOrders = () => {
   let order = null;
 
   if (lengthForVip > 0) {
-    order = updateOrderStatus(pendingOrdersVip.value);
+    order = startNextPendingOrder(pendingOrdersVip.value);
 
     if (!order) return;
 
     idleBots.value[0].processOrder(order, "vip");
   } else if (lengthForNormal > 0) {
-    order = updateOrderStatus(pendingOrdersNormal.value);
+    order = startNextPendingOrder(pendingOrdersNormal.value);
 
     if (!order) return;
 
@@ -145,7 +124,7 @@ const startProcessingOrders = () => {
   activeBots.value.push(idleBots.value.shift());
 };
 
-const updateOrderStatus = (orders) => {
+const startNextPendingOrder = (orders) => {
   const pendingOrder = orders.find((order) => order.status === "pending");
 
   if (!pendingOrder) return false;
@@ -157,16 +136,12 @@ const updateOrderStatus = (orders) => {
 </script>
 
 <template>
-  {{ idleBots }}
-  <div>
-    {{ activeBots }}
-  </div>
   <!-- Orders -->
-  <div class="flex flex-row gap-5">
+  <div class="flex flex-row gap-5 mt-10">
     <!-- Pending Tab -->
     <div class="w-[100%]">
       <label>Pending...</label>
-      <div class="border-2 border-solid p-2 h-72 max-h-72">
+      <div class="border-2 border-solid p-2 h-94 max-h-94">
         <div v-for="order in pendingOrdersVip" :key="order.id">
           {{ order.name }}
         </div>
@@ -178,7 +153,7 @@ const updateOrderStatus = (orders) => {
     <!-- Completed Tab -->
     <div class="w-[100%]">
       <label>Completed</label>
-      <div class="border-2 border-solid p-2 h-72 max-h-72">
+      <div class="border-2 border-solid p-2 h-94 max-h-94">
         <div v-for="order in processedOrder" :key="order.id">
           {{ order.name }}
         </div>
@@ -188,10 +163,10 @@ const updateOrderStatus = (orders) => {
 
   <!-- Buttons -->
   <div class="flex flex-row mt-5 gap-4">
-    <button class="btn btn-primary" @click="addNormalOrder">
+    <button class="btn btn-primary" @click="addOrder('normal')">
       Add Order For Normal Customer
     </button>
-    <button class="btn btn-primary" @click="addVipOrder">
+    <button class="btn btn-primary" @click="addOrder('vip')">
       Add Order For VIP Customer
     </button>
   </div>
